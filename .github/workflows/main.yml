@@ -53,7 +53,7 @@ jobs:
         export DIST_DIR="${OUT_DIR}/dist"
         export AK3="${KDIR}/anykernel3"
         export CONFIG=vendor/veux-qgki_defconfig
-        export DEVICE="Xiaomi Poco x4 Pro"
+        export DEVICE="Xiaomi Poco X4 Pro"
         export CODENAME="veux"
         export BUILDER="GitHub Actions"
         export COMPILER=clang
@@ -100,9 +100,28 @@ jobs:
 
         # Build commands
         make O="${OUT_DIR}" ARCH=arm64 "${CONFIG}"
-        time make -j"${PROCS}" O="${OUT_DIR}" ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- \
-          CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
+        time make -j"${PROCS}" O="${OUT_DIR}" ARCH=arm64 CC=clang LD=ld.lld \
+          CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+          CLANG_TRIPLE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1
         
+        # Verify build artifacts
+        if [ ! -f "${OUT_DIR}/arch/arm64/boot/Image.gz" ]; then
+          echo "Error: Image.gz not found!"
+          ls -la "${OUT_DIR}/arch/arm64/boot/"
+          exit 1
+        fi
+        
+        if [ ! -f "${OUT_DIR}/arch/arm64/boot/dts/qcom/veux.dtb" ]; then
+          echo "Error: veux.dtb not found!"
+          ls -la "${OUT_DIR}/arch/arm64/boot/dts/qcom/"
+          exit 1
+        fi
+
+        # Create Image.gz-dtb if it doesn't exist
+        if [ ! -f "${OUT_DIR}/arch/arm64/boot/Image.gz-dtb" ]; then
+          cat "${OUT_DIR}/arch/arm64/boot/Image.gz" "${OUT_DIR}/arch/arm64/boot/dts/qcom/veux.dtb" > "${OUT_DIR}/arch/arm64/boot/Image.gz-dtb"
+        fi
+
         # Create output directory
         mkdir -p "${DIST_DIR}"
         
