@@ -18,7 +18,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: recursive
 
@@ -91,7 +91,8 @@ jobs:
 
         # Clone AnyKernel3
         if [ ! -d "${AK3}" ]; then
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 -b sweet "${AK3}"
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 -b veux "${AK3}" || \
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "${AK3}"
         fi
 
         # Setup paths
@@ -119,7 +120,7 @@ jobs:
         gh release upload "${zipn}" "${AK3}/${zipn}.zip"
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: kernel-zip
         path: anykernel3/*.zip
