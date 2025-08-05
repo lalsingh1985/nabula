@@ -1,64 +1,202 @@
-name: Android Kernel Build - Lal Singh
-
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  actions: write
-
-jobs:
-  build:
-    name: Build Kernel
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: 🧾 Checkout Kernel Source
-      uses: actions/checkout@v4
-
-    - name: 🧰 Setup Build Dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y \
-          bc bison flex libssl-dev make libc6-dev libncurses5-dev \
-          gcc clang python3 zip git ccache curl wget unzip build-essential \
-          gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
-
-    - name: 🛠️ Download Clang Toolchain
-      run: |
-        mkdir clang
-        wget -O clang.tar.xz https://github.com/ClangBuiltLinux/tc-build/releases/download/20240506/clang-r487747b.tar.xz
-        tar -xf clang.tar.xz -C clang --strip-components=1
-
-    - name: ⚙️ Set Environment Variables
-      run: |
-        echo "KERNEL_DIR=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-        echo "ARCH=arm64" >> $GITHUB_ENV
-        echo "SUBARCH=arm64" >> $GITHUB_ENV
-        echo "PATH=$GITHUB_WORKSPACE/clang/bin:$PATH" >> $GITHUB_ENV
-        echo "KBUILD_BUILD_USER=LalSingh" >> $GITHUB_ENV
-        echo "KBUILD_BUILD_HOST=GitHubActions" >> $GITHUB_ENV
-
-    - name: 🧾 Make Defconfig
-      run: |
-        make O=out ARCH=arm64 vendor/veux-qgki_defconfig
-
-    - name: 🧱 Build Kernel
-      run: |
-        make -j$(nproc) O=out ARCH=arm64 \
-          CC=clang \
-          CROSS_COMPILE=aarch64-linux-gnu- \
-          CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-          CLANG_TRIPLE=aarch64-linux-gnu- \
-          KBUILD_BUILD_USER="$KBUILD_BUILD_USER" \
-          KBUILD_BUILD_HOST="$KBUILD_BUILD_HOST"
-
-    - name: 📦 Upload Kernel Image
-      uses: actions/upload-artifact@v4
-      with:
-        name: Kernel Image
-        path: |
-          out/arch/arm64/boot/Image.gz-dtb
+[
+  {
+    "kernelName": "astera",
+    "kernelSource": {
+      "device": "begonia",
+      "defconfig": "begonia_user_defconfig",
+      "name": "Astera-Non-Patches",
+      "repo": "https://github.com/xiaomi-begonia-dev/android_kernel_xiaomi_mt6785",
+      "branch": "fifteen"
+    },
+    "withRoot": "none",
+    "withSUSFS": false,
+    "whichSUSFS": false,
+    "withKPM": false,
+    "toolchains": [
+      {
+        "repo": "https://gitlab.com/PixelOS-Devices/playgroundtc",
+        "branch": "17",
+        "name": "clang-playground",
+        "binPath": ["./bin"]
+      }
+    ],
+    "ccache": true,
+    "params": {
+      "ARCH": "arm64",
+      "CC": "clang-playground/bin/clang",
+      "externalCommand": {
+        "CROSS_COMPILE": "clang-playground/bin/aarch64-linux-gnu-",
+        "CROSS_COMPILE_ARM32": "clang-playground/bin/arm-linux-gnueabi-",
+        "LD": "clang-playground/bin/ld.lld",
+        "LLVM": "1",
+        "LLVM_IAS": "1",
+        "AR": "clang-playground/bin/llvm-ar",
+        "NM": "clang-playground/bin/llvm-nm",
+        "OBJCOPY": "clang-playground/bin/llvm-objcopy",
+        "OBJDUMP": "clang-playground/bin/llvm-objdump",
+        "READELF": "clang-playground/bin/llvm-readelf",
+        "OBJSIZE": "clang-playground/bin/llvm-size",
+        "STRIP": "clang-playground/bin/llvm-strip",
+        "LDGOLD": "clang-playground/bin/aarch64-linux-gnu-ld.gold",
+        "LLVM_AR": "clang-playground/bin/llvm-ar",
+        "LLVM_DIS": "clang-playground/bin/llvm-dis"
+      }
+    },
+    "AnyKernel3": {
+      "use": true,
+      "release": true,
+      "repo": "https://github.com/cvnertnc/AnyKernel3/",
+      "branch": "begonia"
+    }
+  },
+  {
+    "kernelName": "astera",
+    "kernelSource": {
+      "device": "begonia",
+      "defconfig": "begonia_user_defconfig",
+      "name": "Astera-KernelSU-SUSFS",
+      "repo": "https://github.com/xiaomi-begonia-dev/android_kernel_xiaomi_mt6785",
+      "branch": "fifteen"
+    },
+    "withRoot": "ksu",
+    "withSUSFS": true,
+    "whichSUSFS": "susfs-dev",
+    "withKPM": false,
+    "toolchains": [
+      {
+        "repo": "https://gitlab.com/PixelOS-Devices/playgroundtc",
+        "branch": "17",
+        "name": "clang-playground",
+        "binPath": ["./bin"]
+      }
+    ],
+    "ccache": true,
+    "params": {
+      "ARCH": "arm64",
+      "CC": "clang-playground/bin/clang",
+      "externalCommand": {
+        "CROSS_COMPILE": "clang-playground/bin/aarch64-linux-gnu-",
+        "CROSS_COMPILE_ARM32": "clang-playground/bin/arm-linux-gnueabi-",
+        "LD": "clang-playground/bin/ld.lld",
+        "LLVM": "1",
+        "LLVM_IAS": "1",
+        "AR": "clang-playground/bin/llvm-ar",
+        "NM": "clang-playground/bin/llvm-nm",
+        "OBJCOPY": "clang-playground/bin/llvm-objcopy",
+        "OBJDUMP": "clang-playground/bin/llvm-objdump",
+        "READELF": "clang-playground/bin/llvm-readelf",
+        "OBJSIZE": "clang-playground/bin/llvm-size",
+        "STRIP": "clang-playground/bin/llvm-strip",
+        "LDGOLD": "clang-playground/bin/aarch64-linux-gnu-ld.gold",
+        "LLVM_AR": "clang-playground/bin/llvm-ar",
+        "LLVM_DIS": "clang-playground/bin/llvm-dis"
+      }
+    },
+    "AnyKernel3": {
+      "use": true,
+      "release": true,
+      "repo": "https://github.com/cvnertnc/AnyKernel3/",
+      "branch": "begonia"
+    }
+  },
+  {
+    "kernelName": "astera",
+    "kernelSource": {
+      "device": "begonia",
+      "defconfig": "begonia_user_defconfig",
+      "name": "Astera-KSU-Next-SUSFS",
+      "repo": "https://github.com/xiaomi-begonia-dev/android_kernel_xiaomi_mt6785",
+      "branch": "fifteen"
+    },
+    "withRoot": "ksun",
+    "withSUSFS": true,
+    "whichSUSFS": "susfs-dev",
+    "withKPM": false,
+    "toolchains": [
+      {
+        "repo": "https://gitlab.com/PixelOS-Devices/playgroundtc",
+        "branch": "17",
+        "name": "clang-playground",
+        "binPath": ["./bin"]
+      }
+    ],
+    "ccache": true,
+    "params": {
+      "ARCH": "arm64",
+      "CC": "clang-playground/bin/clang",
+      "externalCommand": {
+        "CROSS_COMPILE": "clang-playground/bin/aarch64-linux-gnu-",
+        "CROSS_COMPILE_ARM32": "clang-playground/bin/arm-linux-gnueabi-",
+        "LD": "clang-playground/bin/ld.lld",
+        "LLVM": "1",
+        "LLVM_IAS": "1",
+        "AR": "clang-playground/bin/llvm-ar",
+        "NM": "clang-playground/bin/llvm-nm",
+        "OBJCOPY": "clang-playground/bin/llvm-objcopy",
+        "OBJDUMP": "clang-playground/bin/llvm-objdump",
+        "READELF": "clang-playground/bin/llvm-readelf",
+        "OBJSIZE": "clang-playground/bin/llvm-size",
+        "STRIP": "clang-playground/bin/llvm-strip",
+        "LDGOLD": "clang-playground/bin/aarch64-linux-gnu-ld.gold",
+        "LLVM_AR": "clang-playground/bin/llvm-ar",
+        "LLVM_DIS": "clang-playground/bin/llvm-dis"
+      }
+    },
+    "AnyKernel3": {
+      "use": true,
+      "release": true,
+      "repo": "https://github.com/cvnertnc/AnyKernel3/",
+      "branch": "begonia"
+    }
+  },
+  {
+    "kernelName": "astera",
+    "kernelSource": {
+      "device": "begonia",
+      "defconfig": "begonia_user_defconfig",
+      "name": "Astera-SukiSU-SUSFS",
+      "repo": "https://github.com/xiaomi-begonia-dev/android_kernel_xiaomi_mt6785",
+      "branch": "fifteen"
+    },
+    "withRoot": "sukisu",
+    "withSUSFS": true,
+    "whichSUSFS": "susfs-dev",
+    "withKPM": false,
+    "toolchains": [
+      {
+        "repo": "https://gitlab.com/PixelOS-Devices/playgroundtc",
+        "branch": "17",
+        "name": "clang-playground",
+        "binPath": ["./bin"]
+      }
+    ],
+    "ccache": true,
+    "params": {
+      "ARCH": "arm64",
+      "CC": "clang-playground/bin/clang",
+      "externalCommand": {
+        "CROSS_COMPILE": "clang-playground/bin/aarch64-linux-gnu-",
+        "CROSS_COMPILE_ARM32": "clang-playground/bin/arm-linux-gnueabi-",
+        "LD": "clang-playground/bin/ld.lld",
+        "LLVM": "1",
+        "LLVM_IAS": "1",
+        "AR": "clang-playground/bin/llvm-ar",
+        "NM": "clang-playground/bin/llvm-nm",
+        "OBJCOPY": "clang-playground/bin/llvm-objcopy",
+        "OBJDUMP": "clang-playground/bin/llvm-objdump",
+        "READELF": "clang-playground/bin/llvm-readelf",
+        "OBJSIZE": "clang-playground/bin/llvm-size",
+        "STRIP": "clang-playground/bin/llvm-strip",
+        "LDGOLD": "clang-playground/bin/aarch64-linux-gnu-ld.gold",
+        "LLVM_AR": "clang-playground/bin/llvm-ar",
+        "LLVM_DIS": "clang-playground/bin/llvm-dis"
+      }
+    },
+    "AnyKernel3": {
+      "use": true,
+      "release": true,
+      "repo": "https://github.com/cvnertnc/AnyKernel3/",
+      "branch": "begonia"
+    }
+  }
+]
