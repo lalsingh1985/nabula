@@ -38,7 +38,7 @@ jobs:
     - name: Build Kernel
       run: |
         export PATH=$(pwd)/clang/bin:$PATH
-        make O=out ARCH=arm64 <your_defconfig>
+        make O=out ARCH=arm64 vendor\veux-qgki_defconfig
         make -j$(nproc) O=out ARCH=arm64 \
           CC=clang \
           CROSS_COMPILE=aarch64-linux-gnu- \
