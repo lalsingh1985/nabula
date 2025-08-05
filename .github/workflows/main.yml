@@ -6,47 +6,59 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   build:
     name: Build Kernel
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Kernel Source
-      uses: actions/checkout@v3
+    - name: 🧾 Checkout Kernel Source
+      uses: actions/checkout@v4
 
-    - name: Setup Build Dependencies
+    - name: 🧰 Setup Build Dependencies
       run: |
         sudo apt update
-        sudo apt install -y bc bison flex libssl-dev make libc6-dev libncurses5-dev gcc clang python3 zip git ccache curl wget unzip
+        sudo apt install -y \
+          bc bison flex libssl-dev make libc6-dev libncurses5-dev \
+          gcc clang python3 zip git ccache curl wget unzip build-essential \
+          gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-    - name: Download Clang Toolchain
+    - name: 🛠️ Download Clang Toolchain
       run: |
         mkdir clang
-        wget https://github.com/ClangBuiltLinux/tc-build/releases/download/20240506/clang-r487747b.tar.xz
-        tar -xf clang-r487747b.tar.xz -C clang --strip-components=1
+        wget -O clang.tar.xz https://github.com/ClangBuiltLinux/tc-build/releases/download/20240506/clang-r487747b.tar.xz
+        tar -xf clang.tar.xz -C clang --strip-components=1
 
-    - name: Set up environment
+    - name: ⚙️ Set Environment Variables
       run: |
-        export PATH=$(pwd)/clang/bin:$PATH
-        export KERNEL_DIR=$(pwd)
-        export ARCH=arm64
-        export SUBARCH=arm64
-        export CLANG_TRIPLE=aarch64-linux-gnu-
-        export CROSS_COMPILE=aarch64-linux-gnu-
+        echo "KERNEL_DIR=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+        echo "ARCH=arm64" >> $GITHUB_ENV
+        echo "SUBARCH=arm64" >> $GITHUB_ENV
+        echo "PATH=$GITHUB_WORKSPACE/clang/bin:$PATH" >> $GITHUB_ENV
+        echo "KBUILD_BUILD_USER=LalSingh" >> $GITHUB_ENV
+        echo "KBUILD_BUILD_HOST=GitHubActions" >> $GITHUB_ENV
 
-    - name: Build Kernel
+    - name: 🧾 Make Defconfig
       run: |
-        export PATH=$(pwd)/clang/bin:$PATH
-        make O=out ARCH=arm64 vendor\veux-qgki_defconfig
+        make O=out ARCH=arm64 vendor/veux-qgki_defconfig
+
+    - name: 🧱 Build Kernel
+      run: |
         make -j$(nproc) O=out ARCH=arm64 \
           CC=clang \
           CROSS_COMPILE=aarch64-linux-gnu- \
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-          CLANG_TRIPLE=aarch64-linux-gnu-
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          KBUILD_BUILD_USER="$KBUILD_BUILD_USER" \
+          KBUILD_BUILD_HOST="$KBUILD_BUILD_HOST"
 
-    - name: Upload zImage/boot.img
-      uses: actions/upload-artifact@v3
+    - name: 📦 Upload Kernel Image
+      uses: actions/upload-artifact@v4
       with:
         name: Kernel Image
-        path: out/arch/arm64/boot/Image.gz-dtb
+        path: |
+          out/arch/arm64/boot/Image.gz-dtb
