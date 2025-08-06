@@ -1,8 +1,8 @@
-name: ARM64 Kernel Build (veux-qgki)
+name: Kernel Build with Clang
 
 on:
   push:
-    branches: [ main ]  # Change if your default branch is different
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -14,49 +14,50 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
+        fetch-depth: 0  # Full clone for version generation
 
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          build-essential \
+          clang lld llvm \
           libncurses-dev \
           bison flex \
           libssl-dev \
           libelf-dev \
           bc \
-          git \
           make \
-          gcc-aarch64-linux-gnu \
-          gcc-cross-aarch64-linux-gnu
+          git
 
-    - name: Set up build environment
+    - name: Set up Clang environment
       run: |
-        export ARCH=arm64
-        export CROSS_COMPILE=aarch64-linux-gnu-
+        echo "CC=clang" >> $GITHUB_ENV
+        echo "LD=ld.lld" >> $GITHUB_ENV
+        echo "AR=llvm-ar" >> $GITHUB_ENV
+        echo "NM=llvm-nm" >> $GITHUB_ENV
+        echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
 
     - name: Configure kernel
       run: |
-        make vendor/veux-qgki_defconfig
+        make ARCH=arm64 CC=clang LD=ld.lld vendor/veux-qgki_defconfig
 
     - name: Build kernel
       run: |
-        make -j$(nproc) Image.gz dtbs
-
-    - name: Package artifacts
-      if: success()
-      run: |
-        mkdir -p artifacts
-        # ARM64 specific artifacts
-        [ -f arch/arm64/boot/Image.gz ] && cp arch/arm64/boot/Image.gz artifacts/
-        [ -f arch/arm64/boot/dts/vendor/*.dtb ] && cp arch/arm64/boot/dts/vendor/*.dtb artifacts/
-        [ -f System.map ] && cp System.map artifacts/
-        [ -f .config ] && cp .config artifacts/
+        make -j$(nproc) ARCH=arm64 \
+          CC=clang \
+          LD=ld.lld \
+          AR=llvm-ar \
+          NM=llvm-nm \
+          OBJCOPY=llvm-objcopy \
+          CROSS_COMPILE=aarch64-linux-gnu- \
+          Image.gz dtbs
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: arm64-kernel-build
-        path: artifacts/
-        retention-days: 5
+        name: clang-kernel-build
+        path: |
+          arch/arm64/boot/Image.gz
+          arch/arm64/boot/dts/**/*.dtb
+          System.map
+          .config
