@@ -22,19 +22,6 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Set up environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y bc build-essential ccache curl flex git libncurses-dev libssl-dev \
-        bison aria2 cpio file gcc-multilib g++-multilib libelf-dev libxml2-utils lzma \
-        lzop python3 python3-pip python3-requests python-is-python3 rsync unzip wget zip zstd \
-        dialog lsb-release software-properties-common
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-
     - name: Install GitHub CLI
       run: |
         curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
@@ -76,34 +63,8 @@ jobs:
         kver="${KBUILD_BUILD_VERSION}"
         zipn="${VERSION}-${CODENAME}-${DATE}"
 
-        # Clone toolchains
-        if [ ! -d "${KDIR}/clang" ]; then
-          git clone --depth=1 https://gitlab.com/ThankYouMario/android_prebuilts_clang-standalone.git clang
-        fi
-
-        if [ ! -d "${KDIR}/gcc64" ]; then
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
-        fi
-
-        if [ ! -d "${KDIR}/gcc32" ]; then
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
-        fi
-
-        # Clone AnyKernel3
-        if [ ! -d "${AK3}" ]; then
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 -b veux "${AK3}" || \
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "${AK3}"
-        fi
-
-        # Setup paths
-        export PATH="${KDIR}/clang/bin:${KDIR}/gcc64/bin:${KDIR}/gcc32/bin:${PATH}"
-
-        # Build commands
-        make O="${OUT_DIR}" ARCH=arm64 "${CONFIG}"
-        time make -j"${PROCS}" O="${OUT_DIR}" ARCH=arm64 CC=clang LD=ld.lld \
-          CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-          CLANG_TRIPLE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1
-        
+     # Build commands
+        make 
         # Verify build artifacts
         if [ ! -f "${OUT_DIR}/arch/arm64/boot/Image.gz" ]; then
           echo "Error: Image.gz not found!"
