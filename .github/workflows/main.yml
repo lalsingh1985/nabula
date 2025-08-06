@@ -11,11 +11,10 @@ env:
   LD: ld.lld-15
   ARCH: arm64
   CROSS_COMPILE: aarch64-linux-gnu-
-  MAKE_JOBS: $(($(nproc)*2))  # Hyper-threaded parallel build
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # More stable than latest
+    runs-on: ubuntu-22.04
     
     steps:
     - name: Checkout
@@ -24,7 +23,6 @@ jobs:
         submodules: recursive
         fetch-depth: 0
 
-    # Cache all dependencies (saves ~90% install time)
     - uses: actions/cache@v3
       id: apt-cache
       with:
@@ -35,7 +33,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-apt-
 
-    # Fast parallel dependency install
     - name: Install dependencies
       run: |
         sudo apt-get -o Acquire::Retries=3 update
@@ -49,9 +46,8 @@ jobs:
           make \
           git \
           crossbuild-essential-arm64 \
-          ccache  # Build cache for faster recompilation
+          ccache
 
-    # Setup ccache (speeds up rebuilds by 90%)
     - name: Configure ccache
       run: |
         echo "/usr/lib/ccache" >> $GITHUB_PATH
@@ -60,6 +56,8 @@ jobs:
 
     - name: Build kernel
       run: |
+        # Calculate jobs (2x available cores)
+        MAKE_JOBS=$(( $(nproc) * 2 ))
         make -j$MAKE_JOBS ARCH=$ARCH CC="$CC" LD="$LD" \
           CROSS_COMPILE="$CROSS_COMPILE" \
           LLVM=1 \
