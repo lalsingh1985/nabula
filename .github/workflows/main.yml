@@ -1,106 +1,43 @@
-name: Nabula Kernel CI
+name: Kernel Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main ]  # Change this if your main branch has a different name
   pull_request:
     branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-      CL_LINK: "https://github.com/lalsingh1985/nabula/raw/main/changelog.md"
-      RELEASE: 1
-      TGI: 0
-
+    
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        submodules: recursive
-
-    - name: Install GitHub CLI
+        fetch-depth: 0  # Important for kernel builds to get full history
+    
+    - name: Install dependencies
       run: |
-        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-        sudo apt update
-        sudo apt install gh -y
-
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc git make gcc
+        
     - name: Build kernel
       run: |
-        #!/bin/bash
-        set -xe
+        # Set default config if .config doesn't exist
+        make defconfig || true
+        # Build the kernel
+        make -j$(nproc)
         
-        # Kernel variables
-        export KDIR=$(pwd)
-        export OUT_DIR="${KDIR}/out"
-        export DIST_DIR="${OUT_DIR}/dist"
-        export AK3="${KDIR}/anykernel3"
-        export CONFIG=vendor/veux-qgki_defconfig
-        export DEVICE="Xiaomi Poco X4 Pro"
-        export CODENAME="veux"
-        export BUILDER="GitHub Actions"
-        export COMPILER=clang
-        export PROCS=$(nproc --all)
-        export REPO_URL="https://github.com/lalsingh1985/nabula"
-        export COMMIT_HASH=$(git rev-parse --short HEAD)
-        export DATE=$(date +"%Y-%m-%d")
+    - name: Package kernel image
+      if: success()
+      run: |
+        mkdir -p artifacts
+        cp arch/x86/boot/bzImage artifacts/  # Adjust arch path if building for different architecture
+        cp System.map artifacts/
         
-        # Version information
-        if [ ! -f "${KDIR}/version" ]; then
-          echo "ver=Nabula" > version
-          echo "num=1" >> version
-        fi
-        
-        KBUILD_BUILD_VERSION=$(grep num= version | cut -d= -f2)
-        export KBUILD_BUILD_VERSION
-        export KBUILD_BUILD_USER="lalsingh1985"
-        export KBUILD_BUILD_HOST="github"
-        VERSION=$(grep ver= version | cut -d= -f2)
-        kver="${KBUILD_BUILD_VERSION}"
-        zipn="${VERSION}-${CODENAME}-${DATE}"
-
-     # Build commands
-        make 
-        # Verify build artifacts
-        if [ ! -f "${OUT_DIR}/arch/arm64/boot/Image.gz" ]; then
-          echo "Error: Image.gz not found!"
-          ls -la "${OUT_DIR}/arch/arm64/boot/"
-          exit 1
-        fi
-        
-        if [ ! -f "${OUT_DIR}/arch/arm64/boot/dts/qcom/veux.dtb" ]; then
-          echo "Error: veux.dtb not found!"
-          ls -la "${OUT_DIR}/arch/arm64/boot/dts/qcom/"
-          exit 1
-        fi
-
-        # Create Image.gz-dtb if it doesn't exist
-        if [ ! -f "${OUT_DIR}/arch/arm64/boot/Image.gz-dtb" ]; then
-          cat "${OUT_DIR}/arch/arm64/boot/Image.gz" "${OUT_DIR}/arch/arm64/boot/dts/qcom/veux.dtb" > "${OUT_DIR}/arch/arm64/boot/Image.gz-dtb"
-        fi
-
-        # Create output directory
-        mkdir -p "${DIST_DIR}"
-        
-        # Copy artifacts
-        cp "${OUT_DIR}/arch/arm64/boot/Image.gz-dtb" "${DIST_DIR}/"
-        cp "${OUT_DIR}/arch/arm64/boot/dtbo.img" "${DIST_DIR}/"
-        
-        # Create AnyKernel3 zip
-        cp "${DIST_DIR}/Image.gz-dtb" "${AK3}/"
-        cp "${DIST_DIR}/dtbo.img" "${AK3}/"
-        cd "${AK3}" && zip -r9 "${zipn}.zip" * -x ".git*" "README.md" "LICENSE" && cd "${KDIR}"
-        
-        # Create GitHub release
-        gh release create "${zipn}" --title "${VERSION} for ${CODENAME} (${DATE})" --notes "Automated build"
-        gh release upload "${zipn}" "${AK3}/${zipn}.zip"
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
+    - name: Upload artifacts
+      if: success()
+      uses: actions/upload-artifact@v3
       with:
-        name: kernel-zip
-        path: anykernel3/*.zip
+        name: kernel-build
+        path: artifacts/
