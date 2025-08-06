@@ -1,4 +1,4 @@
-name: Ultra-Fast Kernel Build with Clang
+name: Kernel Build with LLVM
 
 on:
   push:
@@ -6,16 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  CC: clang-15
-  LD: ld.lld-15
-  ARCH: arm64
-  CROSS_COMPILE: aarch64-linux-gnu-
-
 jobs:
   build:
     runs-on: ubuntu-22.04
-    
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -23,21 +16,14 @@ jobs:
         submodules: recursive
         fetch-depth: 0
 
-    - uses: actions/cache@v3
-      id: apt-cache
-      with:
-        path: |
-          /var/cache/apt
-          /var/lib/apt
-        key: ${{ runner.os }}-apt-${{ hashFiles('**/Makefile') }}
-        restore-keys: |
-          ${{ runner.os }}-apt-
-
-    - name: Install dependencies
+    - name: Install LLVM Toolchain
       run: |
-        sudo apt-get -o Acquire::Retries=3 update
-        sudo apt-get -o Dpkg::Options::="--force-confnew" -o Acquire::Retries=3 install -y --no-install-recommends \
-          clang-15 lld-15 llvm-15 \
+        sudo apt-get update
+        sudo apt-get install -y \
+          clang-15 \
+          lld-15 \
+          llvm-15 \
+          llvm-15-tools \  # This includes llvm-ar, llvm-nm, etc.
           libncurses-dev \
           bison flex \
           libssl-dev \
@@ -48,27 +34,31 @@ jobs:
           crossbuild-essential-arm64 \
           ccache
 
-    - name: Configure ccache
+    - name: Set Up Environment
       run: |
-        echo "/usr/lib/ccache" >> $GITHUB_PATH
-        ccache --set-config=cache_dir=$GITHUB_WORKSPACE/.ccache
-        ccache -z
+        echo "CC=clang-15" >> $GITHUB_ENV
+        echo "LD=ld.lld-15" >> $GITHUB_ENV
+        echo "AR=llvm-ar-15" >> $GITHUB_ENV  # Explicitly use versioned llvm-ar
+        echo "NM=llvm-nm-15" >> $GITHUB_ENV
+        echo "OBJCOPY=llvm-objcopy-15" >> $GITHUB_ENV
+        echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+        echo "ARCH=arm64" >> $GITHUB_ENV
 
-    - name: Build kernel
+    - name: Build Kernel
       run: |
-        # Calculate jobs (2x available cores)
-        MAKE_JOBS=$(( $(nproc) * 2 ))
-        make -j$MAKE_JOBS ARCH=$ARCH CC="$CC" LD="$LD" \
+        make -j$(nproc) \
+          ARCH=$ARCH \
+          CC="$CC" \
+          LD="$LD" \
+          AR="$AR" \
+          NM="$NM" \
+          OBJCOPY="$OBJCOPY" \
           CROSS_COMPILE="$CROSS_COMPILE" \
           LLVM=1 \
           LLVM_IAS=1 \
-          CCACHE=1 \
           vendor/veux-qgki_defconfig all Image.gz dtbs
 
-    - name: Show ccache stats
-      run: ccache -s
-
-    - name: Upload artifacts
+    - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: kernel-${{ github.sha }}
@@ -77,4 +67,3 @@ jobs:
           arch/$ARCH/boot/dts/**/*.dtb
           System.map
           .config
-        retention-days: 3
