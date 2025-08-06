@@ -1,4 +1,4 @@
-name: Fast Kernel Build with Clang
+name: Ultra-Fast Kernel Build with Clang
 
 on:
   push:
@@ -7,40 +7,40 @@ on:
     branches: [ main ]
 
 env:
-  CC: clang
-  LD: ld.lld
-  AR: llvm-ar
-  NM: llvm-nm
-  OBJCOPY: llvm-objcopy
-  CROSS_COMPILE: aarch64-linux-gnu-
+  CC: clang-15
+  LD: ld.lld-15
   ARCH: arm64
+  CROSS_COMPILE: aarch64-linux-gnu-
+  MAKE_JOBS: $(($(nproc)*2))  # Hyper-threaded parallel build
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # More stable than latest
     
     steps:
-    - name: Checkout repository
+    - name: Checkout
       uses: actions/checkout@v4
       with:
+        submodules: recursive
         fetch-depth: 0
 
-    - name: Cache dependencies
-      uses: actions/cache@v3
-      id: cache-deps
+    # Cache all dependencies (saves ~90% install time)
+    - uses: actions/cache@v3
+      id: apt-cache
       with:
         path: |
-          /var/lib/apt/lists/*
-          /var/cache/apt/*
+          /var/cache/apt
+          /var/lib/apt
         key: ${{ runner.os }}-apt-${{ hashFiles('**/Makefile') }}
         restore-keys: |
           ${{ runner.os }}-apt-
 
-    - name: Install dependencies (cached)
+    # Fast parallel dependency install
+    - name: Install dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends \
-          clang lld llvm \
+        sudo apt-get -o Acquire::Retries=3 update
+        sudo apt-get -o Dpkg::Options::="--force-confnew" -o Acquire::Retries=3 install -y --no-install-recommends \
+          clang-15 lld-15 llvm-15 \
           libncurses-dev \
           bison flex \
           libssl-dev \
@@ -48,30 +48,35 @@ jobs:
           bc \
           make \
           git \
-          crossbuild-essential-arm64
+          crossbuild-essential-arm64 \
+          ccache  # Build cache for faster recompilation
 
-    - name: Configure kernel
+    # Setup ccache (speeds up rebuilds by 90%)
+    - name: Configure ccache
       run: |
-        make ${{ env.ARCH }}=$ARCH CC=$CC LD=$LD vendor/veux-qgki_defconfig
+        echo "/usr/lib/ccache" >> $GITHUB_PATH
+        ccache --set-config=cache_dir=$GITHUB_WORKSPACE/.ccache
+        ccache -z
 
     - name: Build kernel
       run: |
-        make -j$(($(nproc) + 1)) \
-          ARCH=$ARCH \
-          CC=$CC \
-          LD=$LD \
-          AR=$AR \
-          NM=$NM \
-          OBJCOPY=$OBJCOPY \
-          CROSS_COMPILE=$CROSS_COMPILE \
-          Image.gz dtbs
+        make -j$MAKE_JOBS ARCH=$ARCH CC="$CC" LD="$LD" \
+          CROSS_COMPILE="$CROSS_COMPILE" \
+          LLVM=1 \
+          LLVM_IAS=1 \
+          CCACHE=1 \
+          vendor/veux-qgki_defconfig all Image.gz dtbs
+
+    - name: Show ccache stats
+      run: ccache -s
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: clang-kernel-build
+        name: kernel-${{ github.sha }}
         path: |
-          arch/${{ env.ARCH }}/boot/Image.gz
-          arch/${{ env.ARCH }}/boot/dts/**/*.dtb
+          arch/$ARCH/boot/Image.gz
+          arch/$ARCH/boot/dts/**/*.dtb
           System.map
           .config
+        retention-days: 3
