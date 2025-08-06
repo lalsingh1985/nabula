@@ -1,10 +1,19 @@
-name: Kernel Build with Clang
+name: Fast Kernel Build with Clang
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+
+env:
+  CC: clang
+  LD: ld.lld
+  AR: llvm-ar
+  NM: llvm-nm
+  OBJCOPY: llvm-objcopy
+  CROSS_COMPILE: aarch64-linux-gnu-
+  ARCH: arm64
 
 jobs:
   build:
@@ -14,12 +23,23 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Full clone for version generation
+        fetch-depth: 0
 
-    - name: Install dependencies
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      id: cache-deps
+      with:
+        path: |
+          /var/lib/apt/lists/*
+          /var/cache/apt/*
+        key: ${{ runner.os }}-apt-${{ hashFiles('**/Makefile') }}
+        restore-keys: |
+          ${{ runner.os }}-apt-
+
+    - name: Install dependencies (cached)
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
+        sudo apt-get install -y --no-install-recommends \
           clang lld llvm \
           libncurses-dev \
           bison flex \
@@ -27,29 +47,23 @@ jobs:
           libelf-dev \
           bc \
           make \
-          git
-
-    - name: Set up Clang environment
-      run: |
-        echo "CC=clang" >> $GITHUB_ENV
-        echo "LD=ld.lld" >> $GITHUB_ENV
-        echo "AR=llvm-ar" >> $GITHUB_ENV
-        echo "NM=llvm-nm" >> $GITHUB_ENV
-        echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
+          git \
+          crossbuild-essential-arm64
 
     - name: Configure kernel
       run: |
-        make ARCH=arm64 CC=clang LD=ld.lld vendor/veux-qgki_defconfig
+        make ${{ env.ARCH }}=$ARCH CC=$CC LD=$LD vendor/veux-qgki_defconfig
 
     - name: Build kernel
       run: |
-        make -j$(nproc) ARCH=arm64 \
-          CC=clang \
-          LD=ld.lld \
-          AR=llvm-ar \
-          NM=llvm-nm \
-          OBJCOPY=llvm-objcopy \
-          CROSS_COMPILE=aarch64-linux-gnu- \
+        make -j$(($(nproc) + 1)) \
+          ARCH=$ARCH \
+          CC=$CC \
+          LD=$LD \
+          AR=$AR \
+          NM=$NM \
+          OBJCOPY=$OBJCOPY \
+          CROSS_COMPILE=$CROSS_COMPILE \
           Image.gz dtbs
 
     - name: Upload artifacts
@@ -57,7 +71,7 @@ jobs:
       with:
         name: clang-kernel-build
         path: |
-          arch/arm64/boot/Image.gz
-          arch/arm64/boot/dts/**/*.dtb
+          arch/${{ env.ARCH }}/boot/Image.gz
+          arch/${{ env.ARCH }}/boot/dts/**/*.dtb
           System.map
           .config
