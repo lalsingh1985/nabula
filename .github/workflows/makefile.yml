@@ -1,4 +1,4 @@
-name: Nabula Kernel Build
+name: Nabula Kernel Build (veux-qgki)
 
 on:
   push:
@@ -9,13 +9,14 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # Build timeout
+    timeout-minutes: 90  # Increased timeout for QGKI builds
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        submodules: recursive  # Important for kernel sources
+        submodules: recursive
+        fetch-depth: 0  # Required for some kernel builds
 
     - name: Set up build environment
       run: |
@@ -25,13 +26,14 @@ jobs:
           gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
           x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev \
           libxml2-utils xsltproc unzip fontconfig python3 bc rsync \
-          libssl-dev kmod cpio
+          libssl-dev kmod cpio ninja-build libncurses5-dev libelf-dev \
+          dwarves git-lfs device-tree-compiler lz4 lzop openssl
 
     - name: Set up Clang toolchain
       run: |
         mkdir -p toolchains
         cd toolchains
-        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang-17
+        git clone --depth=1 --branch llvmorg-17.0.6 https://github.com/llvm/llvm-project clang-17
         git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc
         export PATH=$(pwd)/clang-17/bin:$(pwd)/gcc/bin:$PATH
         export ARCH=arm64
@@ -41,18 +43,28 @@ jobs:
         export LLVM_IAS=1
         cd ..
 
+    - name: Prepare build directory
+      run: |
+        mkdir -p out
+        cp vendor/veux-qgki_defconfig out/.config
+
     - name: Build kernel with Clang
       run: |
-        make O=out clean
-        make O=out nabula_defconfig
-        make O=out CC=clang -j$(nproc) 2>&1 | tee build.log
+        make O=out menuconfig  # Optional: Uncomment if you need to review config
+        make O=out olddefconfig
+        make O=out CC=clang -j$(($(nproc) + 1)) 2>&1 | tee build.log
+        [ -f out/arch/arm64/boot/Image.gz-dtb ] || (echo "Build failed - no Image.gz-dtb!" && exit 1)
 
-    - name: Archive build artifacts
+    - name: Package artifacts
+      run: |
+        mkdir -p artifacts
+        cp out/arch/arm64/boot/{Image.gz-dtb,dtbo.img} artifacts/
+        cp out/.config artifacts/
+        cp build.log artifacts/
+        tar -czvf kernel_artifacts.tar.gz artifacts/
+
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: nabula-kernel-build
-        path: |
-          out/arch/arm64/boot/Image.gz-dtb
-          out/arch/arm64/boot/dtbo.img
-          out/.config
-          build.log
+        name: veux-qgki-kernel
+        path: kernel_artifacts.tar.gz
