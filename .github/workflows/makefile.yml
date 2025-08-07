@@ -120,17 +120,7 @@ jobs:
             sed -i 's/CONFIG_LTO_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "$CONFIG_FILE"
           fi
           
-          echo "CONFIG_KALLSYMS=y" >> "$CONFIG_FILE"
-
-      - name: "🛠 Apply kernel patches"
-        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        run: |
-          CLANG_VERSION=$($CLANG_PATH/clang --version | head -n 1 | grep -oP '\d+' | head -n 1)
-          if [ "$CLANG_VERSION" -ge 21 ]; then
-            curl -L -o clang21.patch "https://raw.githubusercontent.com/topnotchfreaks/kernel_patches/main/0001-treewide-clang-compilation-fixup.patch"
-            patch -p1 < clang21.patch || echo "Warning: Some hunks failed"
-            echo 'KBUILD_CFLAGS += -Wno-default-const-init-unsafe -Wno-strict-prototypes' >> Makefile
-          fi
+        
 
       - name: "🔧 Setup KernelSU (KSU variant only)"
         if: matrix.variant == 'ksu'
@@ -161,14 +151,7 @@ jobs:
           make O=${{ env.OUT_DIR }} ARCH=arm64 LLVM=1 ${{ env.DEFCONFIG_NAME }}
           make O=${{ env.OUT_DIR }} ARCH=arm64 LLVM=1 LTO=$LTO_MODE CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc)
 
-      - name: "🩹 Apply KPM patch (KSU variant only)"
-        if: matrix.variant == 'ksu'
-        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}/${{ env.OUT_DIR }}/arch/arm64/boot
-        run: |
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch
-          chmod +x patch
-          ./patch
-          mv oImage Image
+        
 
       - name: "📦 Prepare artifact"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
