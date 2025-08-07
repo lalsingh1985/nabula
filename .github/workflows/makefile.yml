@@ -1,180 +1,58 @@
-name: "Build kernels"
-
-env:
-  OUT_DIR: "out"
-  KERNEL_VERSION: "5.4"
-  ANDROID_VERSION: "16"
-  SUSFS_BRANCH: "gki-android13-5.15"
+name: Nabula Kernel Build
 
 on:
-  workflow_dispatch:
-    inputs:
-      kernelSourceURL:
-        description: "Kernel source URL"
-        required: true
-        type: string
-        default: "https://github.com/lalsingh1985/nabula"
-      kernelBranch:
-        description: "Kernel branch"
-        required: false
-        type: string
-        default: "main"
-      kernelDevice:
-        description: "Device (used for defconfig)"
-        required: true
-        type: string
-        default: "veux-qgki"
-      localVersion:
-        description: "Custom localversion name (e.g., -mybuild)"
-        required: false
-        type: string
-        default: "Lalsingh"
-      buildKSU:
-        description: "Build KSU variant?"
-        required: false
-        type: boolean
-        default: true
-      ltoMode:
-        description: "Choose LTO mode"
-        required: true
-        default: "Thin"
-        type: choice
-        options:
-          - "Thin"
-          - "Full"
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  Build-Kernel:
-    name: "🚀 Build Kernel"
+  build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        variant: ${{ fromJSON(github.event.inputs.buildKSU == 'true' && '["noksu", "ksu"]' || '["noksu"]') }}
-    env:
-      kernelDir: common_${{ github.event.inputs.kernelDevice }}
-      kernelName: common
-      DEFCONFIG_NAME: ${{ github.event.inputs.kernelDevice }}_defconfig
+    timeout-minutes: 60  # Build timeout
 
     steps:
-      - name: "✨ Setup workspace"
-        run: |
-          mkdir -p $kernelDir
-          echo "BUILD_TIME=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
-          sudo apt-get update -qq
-          sudo apt-get install -y build-essential bc curl flex cpio git zip libelf-dev gcc-aarch64-linux-gnu libssl-dev clang lld llvm aria2 dwarves
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive  # Important for kernel sources
 
-      - name: "🌟 Clone kernel source"
-        working-directory: ./${{ env.kernelDir }}
-        run: |
-          git clone --recursive --branch ${{ github.event.inputs.kernelBranch }} \
-            ${{ github.event.inputs.kernelSourceURL }} ${{ env.kernelName }} --depth=1
+    - name: Set up build environment
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y \
+          git-core gnupg flex bison build-essential zip curl zlib1g-dev \
+          gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
+          x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev \
+          libxml2-utils xsltproc unzip fontconfig python3 bc rsync \
+          libssl-dev kmod cpio
 
-      - name: "💫 Get Clang Toolchain"
-        run: |
-          clang_url=$(curl -sL "https://api.github.com/repos/topnotchfreaks/clang/releases/latest" | \
-                     grep "browser_download_url.*tar.gz" | cut -d '"' -f 4 | head -n 1)
-          
-          if [ -z "$clang_url" ]; then
-            echo "Error: Could not find Clang download URL"
-            exit 1
-          fi
-          
-          mkdir -p clang
-          aria2c -x 16 -s 16 -k 1M --allow-overwrite=true --auto-file-renaming=false \
-            "$clang_url" -o clang.tar.gz
-          
-          tar -xz -C clang --strip-components=1 -f clang.tar.gz
-          rm -rf clang.tar.gz
-          
-          echo "${{ github.workspace }}/clang/bin" >> $GITHUB_PATH
-          echo "CLANG_PATH=${{ github.workspace }}/clang/bin" >> $GITHUB_ENV
+    - name: Set up Clang toolchain
+      run: |
+        mkdir -p toolchains
+        cd toolchains
+        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang-17
+        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc
+        export PATH=$(pwd)/clang-17/bin:$(pwd)/gcc/bin:$PATH
+        export ARCH=arm64
+        export CLANG_TRIPLE=aarch64-linux-gnu-
+        export CROSS_COMPILE=aarch64-linux-android-
+        export LLVM=1
+        export LLVM_IAS=1
+        cd ..
 
-      - name: "📐 Setup build environment"
-        run: |
-          if [ "${{ github.event.inputs.ltoMode }}" = "Full" ]; then
-            SWAP_SIZE=20G
-          else
-            SWAP_SIZE=8G
-          fi
-          sudo fallocate -l $SWAP_SIZE /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          echo "vm.swappiness=60" | sudo tee -a /etc/sysctl.conf
-          sudo sysctl -p
+    - name: Build kernel with Clang
+      run: |
+        make O=out clean
+        make O=out nabula_defconfig
+        make O=out CC=clang -j$(nproc) 2>&1 | tee build.log
 
-      - name: "⚙️ Configure kernel"
-        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        run: |
-          CONFIG_FILE="arch/arm64/configs/${{ env.DEFCONFIG_NAME }}"
-          
-          if [ -n "${{ github.event.inputs.localVersion }}" ]; then
-            echo "CONFIG_LOCALVERSION=\"${{ github.event.inputs.localVersion }}\"" >> "$CONFIG_FILE"
-          fi
-
-          if [ "${{ github.event.inputs.ltoMode }}" = "Full" ]; then
-            sed -i 's/CONFIG_LTO_CLANG_THIN=y/CONFIG_LTO_CLANG_FULL=y/' "$CONFIG_FILE"
-            sed -i 's/CONFIG_LTO_NONE=y/CONFIG_LTO_CLANG_FULL=y/' "$CONFIG_FILE"
-          else
-            sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "$CONFIG_FILE"
-            sed -i 's/CONFIG_LTO_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "$CONFIG_FILE"
-          fi
-          
-        
-
-      - name: "🔧 Setup KernelSU (KSU variant only)"
-        if: matrix.variant == 'ksu'
-        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        run: |
-          rm -rf ./KernelSU ./drivers/kernelsu
-          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
-          CONFIG_FILE="arch/arm64/configs/${{ env.DEFCONFIG_NAME }}"
-          cat >> "$CONFIG_FILE" << 'EOF'
-          CONFIG_KSU=y
-          CONFIG_KSU_MANUAL_HOOK=y
-          CONFIG_KPM=y
-          EOF
-
-      - name: "🔨 Build kernel"
-        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        run: |
-          mkdir -p ${{ env.OUT_DIR }}
-          export KBUILD_BUILD_USER="belowzeroiq"
-          export KBUILD_BUILD_HOST="GitHub"
-
-          if [ "${{ github.event.inputs.ltoMode }}" = "Full" ]; then
-            LTO_MODE=full
-          else
-            LTO_MODE=thin
-          fi
-
-          make O=${{ env.OUT_DIR }} ARCH=arm64 LLVM=1 ${{ env.DEFCONFIG_NAME }}
-          make O=${{ env.OUT_DIR }} ARCH=arm64 LLVM=1 LTO=$LTO_MODE CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc)
-
-        
-
-      - name: "📦 Prepare artifact"
-        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        run: |
-          cp ${{ env.OUT_DIR }}/arch/arm64/boot/Image ${{ github.workspace }}/Image.${{ matrix.variant }}
-
-      - name: "📤 Upload kernel"
-        uses: actions/upload-artifact@v4
-        with:
-          name: kernel-${{ matrix.variant }}
-          path: Image.${{ matrix.variant }}
-          retention-days: 3
-
-  Package-Kernels:
-    name: "📦 Package kernels"
-    runs-on: ubuntu-latest
-    needs: Build-Kernel
-    steps:
-      - name: "📥 Download artifacts"
-        uses: actions/download-artifact@v4
-        with:
-          path: ./kernels/
-
-      - name: "📦 Create flashable ZIP"
-        run: |
-          git clone --depth=1 https://github.com/topnotchfreaks/AnyKernel3
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: nabula-kernel-build
+        path: |
+          out/arch/arm64/boot/Image.gz-dtb
+          out/arch/arm64/boot/dtbo.img
+          out/.config
+          build.log
