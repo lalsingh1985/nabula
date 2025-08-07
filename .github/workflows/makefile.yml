@@ -7,6 +7,16 @@ env:
 
 on:
   workflow_dispatch:
+    inputs:
+      kernelsu_variant:
+        description: "Select KernelSU Variant"
+        required: true
+        default: "kernelsu"
+        type: choice
+        options:
+          - kernelsu
+          - kernelsu-next
+          - sukisu
 
 jobs:
   Build-Kernel:
@@ -30,6 +40,7 @@ jobs:
             sudo dpkg -i libtinfo5_6.3-2ubuntu0.1_amd64.deb && \
             touch .requirements
           fi
+
       - name: "Setup Clang toolchain"
         run: |
           git clone --depth=1 https://gitlab.com/ThankYouMario/android_prebuilts_clang-standalone.git clang
@@ -41,6 +52,34 @@ jobs:
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git gcc32
           echo "$(pwd)/gcc64/bin" >> $GITHUB_PATH
           echo "$(pwd)/gcc32/bin" >> $GITHUB_PATH
+
+      - name: "Apply KernelSU Patch Based on Selection"
+        working-directory: ./${{ env.KERNEL_DIR }}
+        run: |
+          if [[ "${{ github.event.inputs.kernelsu_variant }}" == "kernelsu" ]]; then
+            echo "Applying KernelSU..."
+            git clone --depth=1 https://github.com/tiann/KernelSU kernel_su
+          elif [[ "${{ github.event.inputs.kernelsu_variant }}" == "kernelsu-next" ]]; then
+            echo "Applying KernelSU-Next..."
+            git clone --depth=1 https://github.com/KernelSU-Next/KernelSU kernel_su
+          elif [[ "${{ github.event.inputs.kernelsu_variant }}" == "sukisu" ]]; then
+            echo "Applying Sukisu Ultra..."
+            git clone --depth=1 https://gitlab.com/KernelSU-Next/kernel_sksu.git kernel_su
+          else
+            echo "❌ Invalid KernelSU variant!"
+            exit 1
+          fi
+
+          echo "✅ Cloned KernelSU variant: ${{ github.event.inputs.kernelsu_variant }}"
+          bash ./kernel_su/scripts/apply.sh
+
+      - name: "Enable KernelSU Defconfig Options"
+        working-directory: ./${{ env.KERNEL_DIR }}
+        run: |
+          DEFCONFIG_PATH="arch/arm64/configs/${{ env.DEFCONFIG_NAME }}"
+          echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_SKIP_SECURITY_PATCH_DATE_CHECK=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_COMPAT_5_4=y" >> $DEFCONFIG_PATH
 
       - name: "Set build environment"
         working-directory: ./${{ env.KERNEL_DIR }}
