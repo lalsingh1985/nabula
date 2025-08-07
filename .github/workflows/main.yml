@@ -1,4 +1,4 @@
-name: Kernel Build with LLVM
+name: Android Kernel Build
 
 on:
   push:
@@ -8,62 +8,40 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-        fetch-depth: 0
-
-    - name: Install LLVM Toolchain
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Set up build environment
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          clang-15 \
-          lld-15 \
-          llvm-15 \
-          llvm-15-tools \  # This includes llvm-ar, llvm-nm, etc.
-          libncurses-dev \
-          bison flex \
-          libssl-dev \
-          libelf-dev \
-          bc \
-          make \
-          git \
-          crossbuild-essential-arm64 \
-          ccache
-
-    - name: Set Up Environment
+          git-core gnupg flex bison build-essential zip curl zlib1g-dev \
+          gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
+          x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev \
+          libxml2-utils xsltproc unzip fontconfig python3 bc rsync
+        
+    - name: Set up toolchain
       run: |
-        echo "CC=clang-15" >> $GITHUB_ENV
-        echo "LD=ld.lld-15" >> $GITHUB_ENV
-        echo "AR=llvm-ar-15" >> $GITHUB_ENV  # Explicitly use versioned llvm-ar
-        echo "NM=llvm-nm-15" >> $GITHUB_ENV
-        echo "OBJCOPY=llvm-objcopy-15" >> $GITHUB_ENV
-        echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
-        echo "ARCH=arm64" >> $GITHUB_ENV
-
-    - name: Build Kernel
+        mkdir -p toolchains
+        cd toolchains
+        git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9
+        export PATH=$(pwd)/aarch64-linux-android-4.9/bin:$PATH
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-android-
+        cd ..
+        
+    - name: Build kernel
       run: |
-        make -j$(nproc) \
-          ARCH=$ARCH \
-          CC="$CC" \
-          LD="$LD" \
-          AR="$AR" \
-          NM="$NM" \
-          OBJCOPY="$OBJCOPY" \
-          CROSS_COMPILE="$CROSS_COMPILE" \
-          LLVM=1 \
-          LLVM_IAS=1 \
-          vendor/veux-qgki_defconfig all Image.gz dtbs
-
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v4
+        make clean
+        make defconfig
+        make -j$(nproc)
+        
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v3
       with:
-        name: kernel-${{ github.sha }}
+        name: kernel-build
         path: |
-          arch/$ARCH/boot/Image.gz
-          arch/$ARCH/boot/dts/**/*.dtb
-          System.map
+          arch/arm64/boot/Image.gz-dtb
           .config
