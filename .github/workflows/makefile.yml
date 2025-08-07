@@ -3,7 +3,7 @@ name: "Build Nebula Kernel"
 env:
   OUT_DIR: "out"
   KERNEL_DIR: "nabula"
-  DEFCONFIG_NAME: "veux-qgki_defconfig"
+  DEFCONFIG_NAME: "vendor/veux-qgki_defconfig"
 
 on:
   workflow_dispatch:
