@@ -18,17 +18,17 @@ on:
         description: "Kernel branch"
         required: false
         type: string
-        default: "codelinaro"
+        default: "main"
       kernelDevice:
         description: "Device (used for defconfig)"
         required: true
         type: string
-        default: "gki"
+        default: "veux-qgki"
       localVersion:
         description: "Custom localversion name (e.g., -mybuild)"
         required: false
         type: string
-        default: ""
+        default: "Lalsingh"
       buildKSU:
         description: "Build KSU variant?"
         required: false
@@ -132,16 +132,16 @@ jobs:
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         run: |
           # Apply LineageOS disguise patch
-          curl -L -o lineage.patch "https://raw.githubusercontent.com/topnotchfreaks/kernel_patches/main/0001-fs-lineageos-disguise.patch"
-          patch -p1 < lineage.patch || echo "Warning: Some hunks failed"
+          #curl -L -o lineage.patch "https://raw.githubusercontent.com/topnotchfreaks/kernel_patches/main/0001-fs-lineageos-disguise.patch"
+          #patch -p1 < lineage.patch || echo "Warning: Some hunks failed"
           
           # Apply Clang 21+ compatibility if needed
-          CLANG_VERSION=$($CLANG_PATH/clang --version | head -n 1 | grep -oP '\d+' | head -n 1)
-          if [ "$CLANG_VERSION" -ge 21 ]; then
-            curl -L -o clang21.patch "https://raw.githubusercontent.com/topnotchfreaks/kernel_patches/main/0001-treewide-clang-compilation-fixup.patch"
-            patch -p1 < clang21.patch || echo "Warning: Some hunks failed"
-            echo 'KBUILD_CFLAGS += -Wno-default-const-init-unsafe -Wno-strict-prototypes' >> Makefile
-          fi
+         # CLANG_VERSION=$($CLANG_PATH/clang --version | head -n 1 | grep -oP '\d+' | head -n 1)
+         # if [ "$CLANG_VERSION" -ge 21 ]; then
+           # curl -L -o clang21.patch "https://raw.githubusercontent.com/topnotchfreaks/kernel_patches/main/0001-treewide-clang-compilation-fixup.patch"
+           # patch -p1 < clang21.patch || echo "Warning: Some hunks failed"
+          #  echo 'KBUILD_CFLAGS += -Wno-default-const-init-unsafe -Wno-strict-prototypes' >> Makefile
+         # fi
 
       - name: "🔧 Setup KernelSU (KSU variant only)"
         if: matrix.variant == 'ksu'
