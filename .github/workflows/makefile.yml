@@ -2,8 +2,8 @@ name: "Build kernels"
 
 env:
   OUT_DIR: "out"
-  KERNEL_VERSION: "5.15"
-  ANDROID_VERSION: "13"
+  KERNEL_VERSION: "5.4"
+  ANDROID_VERSION: "16"
   SUSFS_BRANCH: "gki-android13-5.15"
 
 on:
@@ -136,12 +136,12 @@ jobs:
           #patch -p1 < lineage.patch || echo "Warning: Some hunks failed"
           
           # Apply Clang 21+ compatibility if needed
-         # CLANG_VERSION=$($CLANG_PATH/clang --version | head -n 1 | grep -oP '\d+' | head -n 1)
-         # if [ "$CLANG_VERSION" -ge 21 ]; then
-           # curl -L -o clang21.patch "https://raw.githubusercontent.com/topnotchfreaks/kernel_patches/main/0001-treewide-clang-compilation-fixup.patch"
-           # patch -p1 < clang21.patch || echo "Warning: Some hunks failed"
-          #  echo 'KBUILD_CFLAGS += -Wno-default-const-init-unsafe -Wno-strict-prototypes' >> Makefile
-         # fi
+         CLANG_VERSION=$($CLANG_PATH/clang --version | head -n 1 | grep -oP '\d+' | head -n 1)
+         if [ "$CLANG_VERSION" -ge 21 ]; then
+          curl -L -o clang21.patch "https://raw.githubusercontent.com/topnotchfreaks/kernel_patches/main/0001-treewide-clang-compilation-fixup.patch"
+          patch -p1 < clang21.patch || echo "Warning: Some hunks failed"
+          echo 'KBUILD_CFLAGS += -Wno-default-const-init-unsafe -Wno-strict-prototypes' >> Makefile
+         fi
 
       - name: "🔧 Setup KernelSU (KSU variant only)"
         if: matrix.variant == 'ksu'
@@ -153,17 +153,17 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
           
           # Apply SUSFS patch
-          PATCH_URL="https://api.github.com/repos/topnotchfreaks/kernel_patches/releases/latest"
-          SUSFS_PATCH=$(curl -s "$PATCH_URL" | grep "browser_download_url.*0001-Implement-SUSFS.*Android-13.*Kernel-5.15.*patch" | cut -d '"' -f 4 | head -n 1)
+          #PATCH_URL="https://api.github.com/repos/topnotchfreaks/kernel_patches/releases/latest"
+          #SUSFS_PATCH=$(curl -s "$PATCH_URL" | grep "browser_download_url.*0001-Implement-SUSFS.*Android-13.*Kernel-5.15.*patch" | cut -d '"' -f 4 | head -n 1)
           
-          if [ -n "$SUSFS_PATCH" ]; then
-            curl -L -o susfs.patch "$SUSFS_PATCH"
-            patch -p1 < susfs.patch || echo "Warning: SUSFS patch failed"
-          fi
+          #if [ -n "$SUSFS_PATCH" ]; then
+           # curl -L -o susfs.patch "$SUSFS_PATCH"
+          #  patch -p1 < susfs.patch || echo "Warning: SUSFS patch failed"
+         # fi
           
           # Apply syscall hooks
-          curl -L -o hooks.patch "https://raw.githubusercontent.com/topnotchfreaks/kernel_patches/main/0001-SUSFS-syscall-hooks.patch"
-          patch -p1 < hooks.patch || echo "Warning: Syscall hooks failed"
+         # curl -L -o hooks.patch "https://raw.githubusercontent.com/topnotchfreaks/kernel_patches/main/0001-SUSFS-syscall-hooks.patch"
+         # patch -p1 < hooks.patch || echo "Warning: Syscall hooks failed"
           
           # Add KSU configs
           CONFIG_FILE="arch/arm64/configs/${{ env.DEFCONFIG_NAME }}"
@@ -171,24 +171,8 @@ jobs:
           CONFIG_KSU=y
           CONFIG_KSU_MANUAL_HOOK=y
           CONFIG_KPM=y
-          CONFIG_KSU_SUSFS=y
-          CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
-          CONFIG_KSU_SUSFS_SUS_PATH=y
-          CONFIG_KSU_SUSFS_SUS_MOUNT=y
-          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
-          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
-          CONFIG_KSU_SUSFS_SUS_KSTAT=y
-          CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n
-          CONFIG_KSU_SUSFS_TRY_UMOUNT=y
-          CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
-          CONFIG_KSU_SUSFS_SPOOF_UNAME=y
-          CONFIG_KSU_SUSFS_ENABLE_LOG=y
-          CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
-          CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
-          CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-          CONFIG_KSU_SUSFS_SUS_SU=n
-          CONFIG_TMPFS_XATTR=y
-          CONFIG_TMPFS_POSIX_ACL=y
+          
+        
           EOF
 
       - name: "🔨 Build kernel"
