@@ -3,20 +3,16 @@ name: "Build Nebula Kernel"
 env:
   OUT_DIR: "out"
   KERNEL_DIR: "nabula"
-  DEFCONFIG_NAME: "vendor/veux-qgki_defconfig"
+  DEFCONFIG_NAME: "veux-qgki_defconfig"
 
 on:
   workflow_dispatch:
     inputs:
-      kernelsu_variant:
-        description: "Select KernelSU Variant"
-        required: true
-        default: "kernelsu"
-        type: choice
-        options:
-          - kernelsu
-          - kernelsu-next
-          - sukisu
+      kernelsu_version:
+        description: "KernelSU version (none, main, next)"
+        required: false
+        type: string
+        default: "none"
 
 jobs:
   Build-Kernel:
@@ -45,6 +41,7 @@ jobs:
         run: |
           git clone --depth=1 https://gitlab.com/ThankYouMario/android_prebuilts_clang-standalone.git clang
           echo "$(pwd)/clang/bin" >> $GITHUB_PATH
+          echo "CLANG_PATH=$(pwd)/clang/bin" >> $GITHUB_ENV
 
       - name: "Setup GCC toolchain"
         run: |
@@ -53,44 +50,37 @@ jobs:
           echo "$(pwd)/gcc64/bin" >> $GITHUB_PATH
           echo "$(pwd)/gcc32/bin" >> $GITHUB_PATH
 
-      - name: "Apply KernelSU Patch Based on Selection"
+      - name: "Add KernelSU (if requested)"
         working-directory: ./${{ env.KERNEL_DIR }}
         run: |
-          if [[ "${{ github.event.inputs.kernelsu_variant }}" == "kernelsu" ]]; then
-            echo "Applying KernelSU..."
-            git clone --depth=1 https://github.com/tiann/KernelSU kernel_su
-          elif [[ "${{ github.event.inputs.kernelsu_variant }}" == "kernelsu-next" ]]; then
+          if [ "${{ inputs.kernelsu_version }}" == "main" ]; then
+            echo "Applying KernelSU main..."
+            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+            echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
+            echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
+            echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
+          elif [ "${{ inputs.kernelsu_version }}" == "next" ]; then
             echo "Applying KernelSU-Next..."
-            git clone --depth=1 https://github.com/KernelSU-Next/KernelSU kernel_su
-          elif [[ "${{ github.event.inputs.kernelsu_variant }}" == "sukisu" ]]; then
-            echo "Applying Sukisu Ultra..."
-            git clone --depth=1 https://gitlab.com/KernelSU-Next/kernel_sksu.git kernel_su
-          else
-            echo "❌ Invalid KernelSU variant!"
-            exit 1
+            git clone --depth=1 https://github.com/tiann/kernel_su.git
+            cd kernel_su
+            python3 kernel_su/setup.py install --config kernel_su/config.json
+            cd ..
+            echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
+            echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
+            echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
+            echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
           fi
-
-          echo "✅ Cloned KernelSU variant: ${{ github.event.inputs.kernelsu_variant }}"
-          bash ./kernel_su/scripts/apply.sh
-
-      - name: "Enable KernelSU Defconfig Options"
-        working-directory: ./${{ env.KERNEL_DIR }}
-        run: |
-          DEFCONFIG_PATH="arch/arm64/configs/${{ env.DEFCONFIG_NAME }}"
-          echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
-          echo "CONFIG_KSU_SKIP_SECURITY_PATCH_DATE_CHECK=y" >> $DEFCONFIG_PATH
-          echo "CONFIG_KSU_COMPAT_5_4=y" >> $DEFCONFIG_PATH
 
       - name: "Set build environment"
         working-directory: ./${{ env.KERNEL_DIR }}
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH=$(pwd)/../clang/bin:$PATH
+          export PATH=${{ env.CLANG_PATH }}:$PATH
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-          export KBUILD_COMPILER_STRING="$($(pwd)/../clang/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
+          export KBUILD_COMPILER_STRING="$(${{ env.CLANG_PATH }}/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
 
           echo "ARCH=arm64" >> $GITHUB_ENV
           echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
@@ -117,7 +107,7 @@ jobs:
         with:
           name: kernel-artifacts
           path: |
-            ./${{ env.KERNEL_DIR }}/${{ env.OUT_DIR }}/arch/arm64/boot/Image
-            ./${{ env.KERNEL_DIR }}/${{ env.OUT_DIR }}/arch/arm64/boot/dtb
-            ./${{ env.KERNEL_DIR }}/${{ env.OUT_DIR }}/arch/arm64/boot/dtbo.img
+            ${{ env.KERNEL_DIR }}/${{ env.OUT_DIR }}/arch/arm64/boot/Image
+            ${{ env.KERNEL_DIR }}/${{ env.OUT_DIR }}/arch/arm64/boot/dtb
+            ${{ env.KERNEL_DIR }}/${{ env.OUT_DIR }}/arch/arm64/boot/dtbo.img
           retention-days: 7
