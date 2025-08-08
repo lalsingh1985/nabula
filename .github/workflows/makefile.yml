@@ -4,6 +4,9 @@ env:
   OUT_DIR: "out"
   KERNEL_DIR: "nabula"
   DEFCONFIG_NAME: "veux-qgki_defconfig"
+  CLANG_VERSION: "17"  # Specify your desired Clang version
+  GCC64_VERSION: "4.9" # GCC 64-bit version
+  GCC32_VERSION: "4.9" # GCC 32-bit version
 
 on:
   workflow_dispatch:
@@ -13,6 +16,11 @@ on:
         required: false
         type: string
         default: "none"
+      clean_cache:
+        description: "Clean build cache?"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   Build-Kernel:
@@ -24,6 +32,16 @@ jobs:
         with:
           repository: lalsingh1985/nabula
           path: ${{ env.KERNEL_DIR }}
+
+      - name: "Cache toolchains"
+        uses: actions/cache@v3
+        id: toolchain-cache
+        with:
+          path: |
+            ~/clang
+            ~/gcc64
+            ~/gcc32
+          key: ${{ runner.os }}-toolchains-${{ env.CLANG_VERSION }}-${{ env.GCC64_VERSION }}-${{ env.GCC32_VERSION }}
 
       - name: "Install prerequisites"
         run: |
@@ -38,17 +56,22 @@ jobs:
           fi
 
       - name: "Setup Clang toolchain"
+        if: steps.toolchain-cache.outputs.cache-hit != 'true' || inputs.clean_cache == 'true'
         run: |
-          git clone --depth=1 https://gitlab.com/ThankYouMario/android_prebuilts_clang-standalone.git clang
-          echo "$(pwd)/clang/bin" >> $GITHUB_PATH
-          echo "CLANG_PATH=$(pwd)/clang/bin" >> $GITHUB_ENV
+          mkdir -p ~/clang
+          git clone --depth=1 --branch ${{ env.CLANG_VERSION }} https://gitlab.com/ThankYouMario/android_prebuilts_clang-standalone.git ~/clang
+          echo "~/clang/bin" >> $GITHUB_PATH
+          echo "CLANG_PATH=~/clang/bin" >> $GITHUB_ENV
 
-      - name: "Setup GCC toolchain"
+      - name: "Setup GCC toolchains"
+        if: steps.toolchain-cache.outputs.cache-hit != 'true' || inputs.clean_cache == 'true'
         run: |
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git gcc64
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git gcc32
-          echo "$(pwd)/gcc64/bin" >> $GITHUB_PATH
-          echo "$(pwd)/gcc32/bin" >> $GITHUB_PATH
+          mkdir -p ~/gcc64
+          mkdir -p ~/gcc32
+          git clone --depth=1 --branch lineage-${{ env.GCC64_VERSION }} https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git ~/gcc64
+          git clone --depth=1 --branch lineage-${{ env.GCC32_VERSION }} https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git ~/gcc32
+          echo "~/gcc64/bin" >> $GITHUB_PATH
+          echo "~/gcc32/bin" >> $GITHUB_PATH
 
       - name: "Add KernelSU (if requested)"
         working-directory: ./${{ env.KERNEL_DIR }}
@@ -76,7 +99,7 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH=${{ env.CLANG_PATH }}:$PATH
+          export PATH=${{ env.CLANG_PATH }}:~/gcc64/bin:~/gcc32/bin:$PATH
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
