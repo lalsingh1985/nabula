@@ -1,94 +1,51 @@
-name: "Optimized Kernel Build"
-
-env:
-  OUT_DIR: "out"
-  KERNEL_DIR: "nabula"
-  DEFCONFIG_NAME: "veux-qgki_defconfig"
-  CLANG_VERSION: "stable"
-  MAKE_JOBS: 4  # Optimized for GitHub Actions runners
+name: Build Kernel for Poco X4 Pro
 
 on:
   workflow_dispatch:
-    inputs:
-      with_kernelsu:
-        description: "Include KernelSU?"
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   build:
-    name: Optimized Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 90  # Prevent hanging builds
+    runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        repository: lalsingh1985/nabula
-        path: ${{ env.KERNEL_DIR }}
-        fetch-depth: 1  # Faster checkout
+      - name: Checkout your repo
+        uses: actions/checkout@v3
 
-    - name: Setup Environment
-      run: |
-        sudo apt-get -qq update && sudo apt-get -qq install -y \
-        bc build-essential clang flex bison libssl-dev libelf-dev \
-        libncurses-dev git make gcc-aarch64-linux-gnu \
-        && sudo rm -rf /var/lib/apt/lists/*
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git curl build-essential bc python3 openjdk-11-jdk
 
-    - name: Cache Toolchains
-      uses: actions/cache@v3
-      id: toolchain-cache
-      with:
-        path: |
-          ~/clang
-          ~/gcc
-        key: ${{ runner.os }}-toolchains-${{ env.CLANG_VERSION }}
+      - name: Clone kernel source
+        run: |
+          git clone --depth=1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource -b veux-r-oss kernel_source
 
-    - name: Setup Clang
-      if: steps.toolchain-cache.outputs.cache-hit != 'true'
-      run: |
-        mkdir -p ~/clang
-        wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-${{ env.CLANG_VERSION }}.tar.gz
-        tar -xzf clang-${{ env.CLANG_VERSION }}.tar.gz -C ~/clang
-        echo "$HOME/clang/bin" >> $GITHUB_PATH
+      - name: Download toolchain
+        run: |
+          mkdir -p toolchain
+          curl -L https://github.com/anon2387/aarch64-linux-android-gnu-toolchain/releases/latest/download/toolchain.tar.gz | tar xz -C toolchain --strip-components=1
 
-    - name: Configure Build
-      working-directory: ./${{ env.KERNEL_DIR }}
-      run: |
-        # Apply battery optimizations
-        scripts/config --file arch/arm64/configs/${{ env.DEFCONFIG_NAME }} \
-          -e CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND \
-          -e CONFIG_CPU_FREQ_GOV_POWERSAVE \
-          -e CONFIG_SCHED_AUTOGROUP \
-          -e CONFIG_ENERGY_MODEL \
-          -e CONFIG_CPU_IDLE_GOV_MENU \
-          -d CONFIG_DEBUG_KERNEL \
-          -d CONFIG_DEBUG_FS
+      - name: Integrate KernelSU Next
+        working-directory: kernel_source
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+          for cfg in CONFIG_KPROBES=y CONFIG_HAVE_KPROBES=y CONFIG_KPROBE_EVENTS=y CONFIG_MODULES=y; do
+            grep -q "^$cfg" arch/arm64/configs/qgki_defconfig || echo "$cfg" >> arch/arm64/configs/qgki_defconfig
+          done
 
-        make O=${{ env.OUT_DIR }} ARCH=arm64 ${{ env.DEFCONFIG_NAME }}
+      - name: Build kernel
+        working-directory: kernel_source
+        env:
+          PATH: ${{ github.workspace }}/toolchain/bin:${PATH}
+        run: |
+          make O=../out ARCH=arm64 qgki_defconfig
+          make -j$(nproc) O=../out ARCH=arm64 CC=aarch64-linux-gnu-gcc
 
-    - name: Build Kernel
-      working-directory: ./${{ env.KERNEL_DIR }}
-      run: |
-        make -j${{ env.MAKE_JOBS }} O=${{ env.OUT_DIR }} ARCH=arm64 \
-        CC=clang \
-        CROSS_COMPILE=aarch64-linux-gnu- \
-        CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-        KCFLAGS="-O3 -mcpu=cortex-a76 -pipe -flto=thin" \
-        LD=ld.lld \
-        AR=llvm-ar \
-        NM=llvm-nm \
-        STRIP=llvm-strip \
-        OBJCOPY=llvm-objcopy \
-        OBJDUMP=llvm-objdump
+      - name: Upload artifacts (Image.gz)
+        uses: actions/upload-artifact@v3
+        with:
+          name: kernel-image
+          path: out/arch/arm64/boot/Image.gz
 
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: kernel-build
-        path: |
-          ${{ env.KERNEL_DIR }}/${{ env.OUT_DIR }}/arch/arm64/boot/Image
-          ${{ env.KERNEL_DIR }}/${{ env.OUT_DIR }}/arch/arm64/boot/dtb
-        retention-days: 3
+      # Optional: step for AnyKernel3 packaging, release, or flashing instructions can be added here
+      
