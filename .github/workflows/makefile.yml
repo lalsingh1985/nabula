@@ -41,11 +41,12 @@ jobs:
           make O=../out ARCH=arm64 qgki_defconfig
           make -j$(nproc) O=../out ARCH=arm64 CC=aarch64-linux-gnu-gcc
 
-      - name: Upload artifacts (Image.gz)
-        uses: actions/upload-artifact@v3
+            - name: Upload artifacts (Image.gz)
+        uses: actions/upload-artifact@v4
         with:
           name: kernel-image
           path: out/arch/arm64/boot/Image.gz
+
 
       # Optional: step for AnyKernel3 packaging, release, or flashing instructions can be added here
       
