@@ -75,7 +75,7 @@ jobs:
 
       - name: 🔍 Device's codename and kernel's version
         run: |
-          DEVICE_CODENAME=YourDevice
+          DEVICE_CODENAME=Veux
           KERNEL_VERSION=$(make kernelversion)
 
           echo "Device Codename: $DEVICE_CODENAME"
