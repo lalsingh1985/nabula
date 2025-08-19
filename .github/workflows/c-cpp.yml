@@ -29,11 +29,10 @@ jobs:
 
     - name: Fetch Android kernel change
       run: |
-        git fetch https://android.googlesource.com/kernel/common refs/changes/63/3615663/3
-
+        git fetch git fetch https://android.googlesource.com/kernel/common refs/changes/20/3653920/1
     - name: Create and checkout temporary branch
       run: |
-        git checkout -b change-3615663 FETCH_HEAD
+        git checkout -b change-3653920 FETCH_HEAD
 
     - name: Checkout target branch
       run: |
@@ -42,7 +41,7 @@ jobs:
     - name: Attempt merge
       run: |
         # Try to merge, but don't fail immediately if there are conflicts
-        if git merge --no-ff change-3615663 -m "Merge Android kernel change 3615663/3"; then
+        if git merge --no-ff change-3653920 -m "Merge Android kernel change 3653920/1"; then
           echo "MERGE_SUCCESS=true" >> $GITHUB_ENV
         else
           echo "Merge failed, likely due to conflicts"
@@ -62,13 +61,13 @@ jobs:
         # Checkout the change branch again
         git checkout change-3615663
         # Push it to a feature branch
-        git push origin change-3615663:android-change-3615663
+        git push origin change-3653920:android-change-3653920
         
         # Create a PR using GitHub CLI
         echo "Creating pull request for manual conflict resolution"
         gh pr create \
           --base "${{ github.event.inputs.target_branch }}" \
-          --head "android-change-3615663" \
+          --head "android-change-3653920" \
           --title "Merge Android kernel change 3615663/3 (NEEDS CONFLICT RESOLUTION)" \
           --body "This PR contains the Android kernel change that could not be automatically merged. Please resolve conflicts manually."
       env:
